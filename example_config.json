@@ -1,0 +1,14 @@
+{
+  "hosts": ["server1.example.com", "server2.example.com"],
+  "username": "nginx-admin",
+  "base_conda_path": "/opt/miniconda3",
+  "deployment_path": "/opt/nginx",
+  "nginx_dir_name": "nginx_prod",
+  "nginx_conf_path": "./nginx.conf",
+  "custom_conda_channel": "https://conda.example.com/",
+  "s3_bucket": "s3://my-nginx-logs/",
+  "archive_after_upload": "/var/archive/nginx-logs",
+  "delete_after_upload": false,
+  "execution_mode": "parallel",
+  "timeout": 600
+} 
