@@ -7,12 +7,41 @@ A command-line interface (CLI) tool for managing NGINX deployments across multip
 - **Multi-server operations**: Execute commands across multiple servers in parallel or serial mode
 - **AWS Auto Scaling Group integration**: Automatically discover target servers from ASG
 - **Conda environment management**: Install NGINX in isolated conda environments
+- **Shell compatibility**: Works across different shells (bash, ksh, zsh, etc.)
 - **Secure SSH authentication**: Password-based authentication with secure prompts
 - **Single password prompt**: Password is requested only once per CLI command execution
 - **Log management**: Upload logs to S3 with compression and archiving options
 - **Configuration flexibility**: Support for both CLI arguments and JSON configuration files
 - **Comprehensive error handling**: Detailed logging and structured output
 - **Dry-run support**: Test operations without making changes
+
+## Shell Compatibility
+
+**ngxmgr is designed to work across different shell environments without requiring special configuration:**
+
+### Supported Shells
+- **bash** (Bourne Again Shell)
+- **ksh** (Korn Shell) 
+- **zsh** (Z Shell)
+- **dash** (Debian Almquist Shell)
+- **sh** (POSIX Shell)
+
+### Key Compatibility Features
+
+1. **No conda activation required**: Uses direct paths to conda binaries instead of `conda activate`
+2. **Portable command syntax**: Avoids shell-specific features like `$()` substitution
+3. **Cross-shell variable assignment**: Uses backticks for command substitution
+4. **Robust error handling**: Commands work even when features like `local` are unavailable
+
+### How it works:
+
+```bash
+# Instead of this (bash-specific, requires conda init):
+source /opt/conda/bin/activate && conda activate nginx_env && nginx -c config
+
+# ngxmgr does this (works in any shell):
+/opt/conda/envs/nginx_env/bin/nginx -c config
+```
 
 ## Supported Operations
 
@@ -147,6 +176,35 @@ ngxmgr install --asg my-asg --username admin ...
 # Parallel execution - password prompted ONCE
 # (No race conditions or multiple prompts)
 ngxmgr start --hosts "server1,server2,server3" --execution-mode parallel --username admin ...
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**"CondaError: Run 'conda init' before 'conda activate'"**
+- ✅ **Fixed**: ngxmgr no longer requires conda activation or initialization
+- Uses direct paths to conda binaries: `/path/to/conda/bin/conda` and `/path/to/conda/envs/nginx_env/bin/nginx`
+
+**"ksh: local: not found"**
+- ✅ **Fixed**: ngxmgr avoids shell-specific features and uses portable POSIX syntax
+- Works across bash, ksh, zsh, and other shells without modification
+
+**Multiple password prompts**
+- ✅ **Fixed**: Password is cached and reused across all SSH connections in a command
+
+### Environment Validation
+
+ngxmgr includes built-in environment validation to help diagnose issues:
+
+```bash
+# The install command automatically validates:
+# - Conda installation exists and is executable
+# - Required paths are accessible
+# - Shell environment compatibility
+
+# For manual diagnostics, check logs or use dry-run mode:
+ngxmgr install --dry-run --hosts "server1" --username admin ...
 ```
 
 ## Command Line Arguments
