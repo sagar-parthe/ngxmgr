@@ -8,6 +8,7 @@ A command-line interface (CLI) tool for managing NGINX deployments across multip
 - **AWS Auto Scaling Group integration**: Automatically discover target servers from ASG
 - **Conda environment management**: Install NGINX in isolated conda environments
 - **Secure SSH authentication**: Password-based authentication with secure prompts
+- **Single password prompt**: Password is requested only once per CLI command execution
 - **Log management**: Upload logs to S3 with compression and archiving options
 - **Configuration flexibility**: Support for both CLI arguments and JSON configuration files
 - **Comprehensive error handling**: Detailed logging and structured output
@@ -117,6 +118,37 @@ ngxmgr install --config config.json
 ngxmgr install --config config.json --timeout 900
 ```
 
+## Password Management
+
+**ngxmgr uses smart password caching to ensure you only need to enter your SSH password once per command execution, regardless of:**
+
+- Number of target hosts (1 or 100+)
+- Execution mode (parallel or serial)
+- Number of operations in a command (install has 3+ steps)
+- Multiple SSH connections required
+
+### How it works:
+
+1. **Single prompt**: Password is requested once before any SSH operations begin
+2. **Thread-safe caching**: Password is securely cached in memory with thread locks
+3. **Reuse across operations**: All SSH connections in the command use the cached password
+4. **Automatic cleanup**: Password is cleared when the command completes
+
+### Example scenarios:
+
+```bash
+# Install on 10 servers - password prompted ONCE
+ngxmgr install --hosts "server1,server2,server3,server4,server5,server6,server7,server8,server9,server10" --username admin ...
+
+# Multi-step install operation - password prompted ONCE
+# (Even though install involves: directory creation + conda setup + file upload)
+ngxmgr install --asg my-asg --username admin ...
+
+# Parallel execution - password prompted ONCE
+# (No race conditions or multiple prompts)
+ngxmgr start --hosts "server1,server2,server3" --execution-mode parallel --username admin ...
+```
+
 ## Command Line Arguments
 
 ### Global Arguments
@@ -171,9 +203,10 @@ The tool automatically uses the IAM role of the EC2 instance it's running on for
 
 ## Security
 
-- SSH passwords are prompted securely and never logged or echoed
-- AWS authentication uses IAM roles (no hardcoded credentials)
-- All operations support dry-run mode for testing
+- **SSH passwords** are prompted securely and never logged or echoed
+- **Password caching** is memory-only and cleared after command completion
+- **AWS authentication** uses IAM roles (no hardcoded credentials)
+- **All operations** support dry-run mode for testing
 
 ## Error Handling
 
@@ -199,6 +232,9 @@ poetry run pytest --cov=src/ngxmgr
 
 # Run specific test file
 poetry run pytest tests/unit/test_config.py
+
+# Test password caching functionality
+python test_password_caching.py
 ```
 
 ### Code Quality

@@ -3,6 +3,7 @@ Remote command execution engine with parallel and serial modes.
 """
 import getpass
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, NamedTuple, Optional
 
@@ -43,6 +44,8 @@ class RemoteExecutor:
         """
         self.config = config
         self._password: Optional[str] = None
+        self._password_lock = threading.Lock()
+        self._password_prompted = False
 
     def get_target_hosts(self) -> List[str]:
         """
@@ -59,10 +62,22 @@ class RemoteExecutor:
         else:
             raise ValueError("No hosts or ASG specified in configuration")
 
-    def get_password(self) -> str:
-        """Get SSH password (prompt if not cached)."""
-        if not self._password:
-            self._password = getpass.getpass(f"Password for {self.config.username}: ")
+    def _ensure_password(self) -> str:
+        """
+        Ensure password is available, prompting only once if needed.
+        Thread-safe implementation.
+        
+        Returns:
+            The SSH password
+        """
+        with self._password_lock:
+            if not self._password and not self._password_prompted:
+                self._password = getpass.getpass(f"Password for {self.config.username}: ")
+                self._password_prompted = True
+            elif not self._password and self._password_prompted:
+                # This shouldn't happen, but just in case
+                raise RuntimeError("Password was prompted but not captured")
+            
         return self._password
 
     def execute_on_host(self, hostname: str, command: str) -> HostResult:
@@ -85,8 +100,11 @@ class RemoteExecutor:
                     command_result=CommandResult(0, "DRY RUN", "", True)
                 )
 
+            # Get password (thread-safe, prompts only once)
+            password = self._ensure_password()
+
             with SSHClient(hostname, self.config.username, self.config.timeout) as ssh:
-                ssh.connect(self.get_password())
+                ssh.connect(password)
                 result = ssh.execute_command(command, timeout=self.config.timeout)
                 
                 return HostResult(
@@ -125,8 +143,11 @@ class RemoteExecutor:
                     command_result=CommandResult(0, "DRY RUN upload", "", True)
                 )
 
+            # Get password (thread-safe, prompts only once)
+            password = self._ensure_password()
+
             with SSHClient(hostname, self.config.username, self.config.timeout) as ssh:
-                ssh.connect(self.get_password())
+                ssh.connect(password)
                 success = ssh.upload_file(local_path, remote_path)
                 
                 return HostResult(
@@ -162,6 +183,11 @@ class RemoteExecutor:
         hosts = self.get_target_hosts()
         logger.info(f"Executing command on {len(hosts)} hosts in {self.config.execution_mode.value} mode")
 
+        # Ensure password is prompted upfront, before any parallel execution
+        if not self.config.dry_run:
+            self._ensure_password()
+            logger.debug("Password cached for SSH connections")
+
         if self.config.execution_mode == ExecutionMode.SERIAL:
             return self._execute_serial(hosts, command)
         else:
@@ -180,6 +206,11 @@ class RemoteExecutor:
         """
         hosts = self.get_target_hosts()
         logger.info(f"Uploading file to {len(hosts)} hosts in {self.config.execution_mode.value} mode")
+
+        # Ensure password is prompted upfront, before any parallel execution
+        if not self.config.dry_run:
+            self._ensure_password()
+            logger.debug("Password cached for file uploads")
 
         if self.config.execution_mode == ExecutionMode.SERIAL:
             return self._upload_serial(hosts, local_path, remote_path)

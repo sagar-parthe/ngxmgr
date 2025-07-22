@@ -40,7 +40,6 @@ class SSHClient:
 
     def __enter__(self):
         """Context manager entry."""
-        self.connect()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -52,21 +51,25 @@ class SSHClient:
         Connect to the remote server.
         
         Args:
-            password: SSH password (prompted if not provided)
+            password: SSH password (prompted only if not provided and needed)
         """
         if self._client and self._client.get_transport() and self._client.get_transport().is_active():
             return
 
+        # Use provided password, or cached password, or prompt as last resort
         if password:
             self._password = password
         elif not self._password:
             self._password = getpass.getpass(f"Password for {self.username}@{self.hostname}: ")
 
+        if not self._password:
+            raise ValueError("No password provided for SSH connection")
+
         self._client = paramiko.SSHClient()
         self._client.set_missing_host_key_policy(paramiko.AutoAddHostKeyPolicy())
 
         try:
-            logger.info(f"Connecting to {self.hostname} as {self.username}")
+            logger.debug(f"Connecting to {self.hostname} as {self.username}")
             self._client.connect(
                 hostname=self.hostname,
                 username=self.username,
@@ -75,7 +78,7 @@ class SSHClient:
                 look_for_keys=False,
                 allow_agent=False,
             )
-            logger.info(f"Successfully connected to {self.hostname}")
+            logger.debug(f"Successfully connected to {self.hostname}")
         except AuthenticationException:
             logger.error(f"Authentication failed for {self.username}@{self.hostname}")
             raise
@@ -91,7 +94,7 @@ class SSHClient:
         if self._client:
             self._client.close()
             self._client = None
-            logger.info(f"Disconnected from {self.hostname}")
+            logger.debug(f"Disconnected from {self.hostname}")
 
     def execute_command(self, command: str, timeout: Optional[int] = None) -> CommandResult:
         """
@@ -171,11 +174,11 @@ class SSHClient:
             raise RuntimeError("Not connected to server")
 
         try:
-            logger.info(f"Uploading {local_path} to {self.hostname}:{remote_path}")
+            logger.debug(f"Uploading {local_path} to {self.hostname}:{remote_path}")
             sftp = self._client.open_sftp()
             sftp.put(local_path, remote_path)
             sftp.close()
-            logger.info(f"Successfully uploaded file to {self.hostname}")
+            logger.debug(f"Successfully uploaded file to {self.hostname}")
             return True
         except Exception as e:
             logger.error(f"File upload failed to {self.hostname}: {e}")
