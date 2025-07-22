@@ -12,5 +12,9 @@
   "delete_after_upload": false,
   "execution_mode": "parallel",
   "timeout": 600,
-  "recursive": false
+  "recursive": false,
+  "interpreter": "/bin/bash",
+  "remote_temp_dir": "/tmp",
+  "cleanup_after_execution": true,
+  "make_executable": true
 } 

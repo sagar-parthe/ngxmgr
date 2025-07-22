@@ -15,6 +15,7 @@ from ngxmgr.config.models import (
     MaintenanceConfig,
     LogUploadConfig,
     CopyConfig,
+    ScriptConfig,
 )
 
 T = TypeVar("T", bound=BaseConfig)
@@ -123,4 +124,14 @@ class ConfigLoader:
     ) -> CopyConfig:
         """Load configuration for copy command."""
         json_config = cls.load_json_config(config_file) if config_file else None
-        return cls.merge_config(CopyConfig, json_config, cli_args) 
+        return cls.merge_config(CopyConfig, json_config, cli_args)
+
+    @classmethod
+    def load_script_config(
+        cls,
+        config_file: Optional[Path] = None,
+        **cli_args: Any,
+    ) -> ScriptConfig:
+        """Load configuration for script command."""
+        json_config = cls.load_json_config(config_file) if config_file else None
+        return cls.merge_config(ScriptConfig, json_config, cli_args) 

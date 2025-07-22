@@ -11,6 +11,7 @@ A command-line interface (CLI) tool for managing NGINX deployments across multip
 - **Secure SSH authentication**: Password-based authentication with secure prompts
 - **Single password prompt**: Password is requested only once per CLI command execution
 - **File and directory copying**: Copy files or directories to remote servers with recursive support
+- **Script execution**: Execute shell scripts on remote servers with custom interpreters
 - **Log management**: Upload logs to S3 with compression and archiving options
 - **Configuration flexibility**: Support for both CLI arguments and JSON configuration files
 - **Comprehensive error handling**: Detailed logging and structured output
@@ -57,6 +58,7 @@ source /opt/conda/bin/activate && conda activate nginx_env && nginx -c config
 | `clear-logs`  | Delete or truncate access and error logs                               |
 | `upload-logs` | Upload logs to AWS S3 with optional deletion or local archiving        |
 | `copy`        | Copy files or directories to remote servers                            |
+| `script`      | Execute shell scripts on remote servers                                |
 
 ## Installation
 
@@ -131,6 +133,19 @@ ngxmgr copy ./assets /var/www/html/assets \
     --region-name us-east-1 \
     --username admin \
     --recursive
+
+# Execute a deployment script on all servers
+ngxmgr script deploy.sh \
+    --args "--env=prod --version=1.2.3" \
+    --hosts "server1.example.com,server2.example.com" \
+    --username deploy
+
+# Run a Python script on ASG instances
+ngxmgr script update_config.py \
+    --interpreter /usr/bin/python3 \
+    --asg my-app-asg \
+    --region-name us-west-2 \
+    --username admin
 ```
 
 ### Copy Command
@@ -151,6 +166,57 @@ ngxmgr copy app.jar /opt/app/app.jar --asg my-app-asg --region-name us-west-2 --
 ngxmgr copy large-file.bin /tmp/large-file.bin --hosts "server1,server2" --username admin --execution-mode serial
 ```
 
+### Script Command
+
+The `script` command executes shell scripts on remote servers with powerful customization options:
+
+```bash
+# Basic script execution
+ngxmgr script deploy.sh --hosts "server1,server2" --username deploy
+
+# Script with arguments
+ngxmgr script backup.sh --args "--database=prod --retention=7d" --hosts "server1,server2" --username admin
+
+# Python script execution
+ngxmgr script data_migration.py \
+    --interpreter /usr/bin/python3 \
+    --args "--source=db1 --target=db2" \
+    --asg data-processing-asg \
+    --region-name us-east-1 \
+    --username data-admin
+
+# Custom temporary directory and no cleanup
+ngxmgr script sensitive_script.sh \
+    --remote-temp-dir /var/secure/tmp \
+    --no-cleanup \
+    --hosts "secure-server1,secure-server2" \
+    --username security-admin
+
+# Shell script with custom interpreter
+ngxmgr script legacy_script.sh \
+    --interpreter /bin/sh \
+    --execution-mode serial \
+    --hosts "legacy-server1,legacy-server2" \
+    --username admin
+
+# Node.js script execution
+ngxmgr script process_data.js \
+    --interpreter /usr/bin/node \
+    --args "input.json output.json" \
+    --asg processing-cluster \
+    --username node-admin
+```
+
+#### Script Command Features:
+
+- **Multiple interpreters**: bash, sh, python, node, ruby, or any custom interpreter
+- **Script arguments**: Pass arguments to your scripts with `--args`
+- **Automatic upload**: Scripts are uploaded to remote servers automatically
+- **Executable permissions**: Scripts are made executable by default
+- **Cleanup options**: Automatically clean up scripts after execution (configurable)
+- **Custom temp directory**: Specify where scripts are temporarily stored on remote servers
+- **Parallel/Serial execution**: Choose execution mode for multiple servers
+
 ### Using Configuration Files
 
 Create a JSON configuration file:
@@ -167,7 +233,12 @@ Create a JSON configuration file:
   "custom_conda_channel": "https://conda.example.com/",
   "s3_bucket": "s3://my-nginx-logs/",
   "execution_mode": "parallel",
-  "timeout": 600
+  "timeout": 600,
+  "recursive": false,
+  "interpreter": "/bin/bash",
+  "remote_temp_dir": "/tmp",
+  "cleanup_after_execution": true,
+  "make_executable": true
 }
 ```
 
@@ -179,6 +250,9 @@ ngxmgr install --config config.json
 
 # Override specific values
 ngxmgr install --config config.json --timeout 900 --region-name us-east-1
+
+# Execute script with config
+ngxmgr script deploy.sh --config config.json --args "--env=staging"
 ```
 
 ## Password Management
@@ -210,6 +284,9 @@ ngxmgr install --asg my-asg --username admin ...
 # Parallel execution - password prompted ONCE
 # (No race conditions or multiple prompts)
 ngxmgr start --hosts "server1,server2,server3" --execution-mode parallel --username admin ...
+
+# Script execution with upload, execution, and cleanup - password prompted ONCE
+ngxmgr script complex_deploy.sh --hosts "server1,server2,server3" --username deploy ...
 ```
 
 ## Troubleshooting
@@ -227,6 +304,12 @@ ngxmgr start --hosts "server1,server2,server3" --execution-mode parallel --usern
 **Multiple password prompts**
 - ✅ **Fixed**: Password is cached and reused across all SSH connections in a command
 
+**Script execution failures**
+- Check interpreter path is correct on remote servers
+- Verify script syntax is compatible with chosen interpreter
+- Use `--dry-run` to test script deployment without execution
+- Check remote temporary directory permissions
+
 ### Environment Validation
 
 ngxmgr includes built-in environment validation to help diagnose issues:
@@ -239,6 +322,7 @@ ngxmgr includes built-in environment validation to help diagnose issues:
 
 # For manual diagnostics, check logs or use dry-run mode:
 ngxmgr install --dry-run --hosts "server1" --username admin ...
+ngxmgr script test.sh --dry-run --hosts "server1" --username admin
 ```
 
 ## Command Line Arguments
@@ -287,6 +371,17 @@ ngxmgr install --dry-run --hosts "server1" --username admin ...
 | `destination_path` |     | Remote destination path               | Yes      |
 | `--recursive`    | `-R`  | Copy directories recursively          | No       |
 
+### Script Command Specific
+
+| Argument                    | Short | Description                                | Required |
+| --------------------------- | ----- | ------------------------------------------ | -------- |
+| `script_path`               |       | Local script file path                     | Yes      |
+| `--args`                    | `-A`  | Arguments to pass to the script            | No       |
+| `--interpreter`             | `-i`  | Interpreter to use for script execution    | No       |
+| `--remote-temp-dir`         |       | Remote temporary directory for script      | No       |
+| `--cleanup/--no-cleanup`    |       | Delete script after execution             | No       |
+| `--executable/--no-executable` |   | Make script executable                     | No       |
+
 ## Configuration Priority
 
 When both configuration files and CLI arguments are provided:
@@ -316,6 +411,7 @@ Ensure the instance has the following permissions:
 # Examples with region specification
 ngxmgr install --asg my-asg --region-name us-west-2 --username admin ...
 ngxmgr copy app.jar /opt/app.jar --asg prod-asg --region-name eu-west-1 --username deploy
+ngxmgr script deploy.sh --asg web-asg --region-name ap-southeast-1 --username deploy
 ```
 
 ## Security
@@ -323,6 +419,7 @@ ngxmgr copy app.jar /opt/app.jar --asg prod-asg --region-name eu-west-1 --userna
 - **SSH passwords** are prompted securely and never logged or echoed
 - **Password caching** is memory-only and cleared after command completion
 - **AWS authentication** uses IAM roles (no hardcoded credentials)
+- **Script cleanup** removes uploaded scripts from remote servers by default
 - **All operations** support dry-run mode for testing
 
 ## Error Handling
@@ -350,8 +447,8 @@ poetry run pytest --cov=src/ngxmgr
 # Run specific test file
 poetry run pytest tests/unit/test_config.py
 
-# Test password caching functionality
-python test_password_caching.py
+# Test script functionality
+poetry run pytest tests/unit/test_script.py
 ```
 
 ### Code Quality

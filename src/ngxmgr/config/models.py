@@ -111,4 +111,31 @@ class CopyConfig(BaseConfig):
         source = Path(v)
         if not source.exists():
             raise ValueError(f"Source path not found: {v}")
+        return v
+
+
+class ScriptConfig(BaseConfig):
+    """Configuration for script execution operations."""
+    script_path: str
+    script_args: Optional[str] = None
+    interpreter: str = "/bin/bash"
+    remote_temp_dir: str = "/tmp"
+    cleanup_after_execution: bool = True
+    make_executable: bool = True
+
+    @validator("script_path")
+    def validate_script_exists(cls, v):
+        """Validate that script file exists."""
+        script = Path(v)
+        if not script.exists():
+            raise ValueError(f"Script file not found: {v}")
+        if not script.is_file():
+            raise ValueError(f"Script path is not a file: {v}")
+        return v
+
+    @validator("interpreter")
+    def validate_interpreter(cls, v):
+        """Validate interpreter path."""
+        if not v.startswith("/"):
+            raise ValueError("Interpreter must be an absolute path")
         return v 

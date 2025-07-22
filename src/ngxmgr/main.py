@@ -12,6 +12,7 @@ from ngxmgr.commands.maintenance import clear_cache_command, clear_logs_command
 from ngxmgr.commands.logs import upload_logs_command
 from ngxmgr.commands.remove import remove_command
 from ngxmgr.commands.copy import copy_command
+from ngxmgr.commands.script import script_command
 
 app = typer.Typer(
     name="ngxmgr",
@@ -466,6 +467,66 @@ def copy(
         region_name=region_name,
         username=username,
         recursive=recursive,
+        execution_mode=execution_mode,
+        config=config,
+        timeout=timeout,
+        log_file=log_file,
+        dry_run=dry_run,
+    )
+
+
+@app.command()
+def script(
+    script_path: str = typer.Argument(..., help="Local script file path"),
+    script_args: Optional[str] = typer.Option(
+        None, "--args", "-A", help="Arguments to pass to the script"
+    ),
+    hosts: Optional[str] = typer.Option(
+        None, "--hosts", "-h", help="Comma-separated list of hostnames/IPs"
+    ),
+    asg: Optional[str] = typer.Option(
+        None, "--asg", "-a", help="AWS Auto Scaling Group name"
+    ),
+    region_name: Optional[str] = typer.Option(
+        None, "--region-name", "-r", help="AWS region name"
+    ),
+    username: str = typer.Option(..., "--username", "-u", help="SSH username"),
+    interpreter: str = typer.Option(
+        "/bin/bash", "--interpreter", "-i", help="Interpreter to use for script execution"
+    ),
+    remote_temp_dir: str = typer.Option(
+        "/tmp", "--remote-temp-dir", help="Remote temporary directory for script"
+    ),
+    cleanup_after_execution: bool = typer.Option(
+        True, "--cleanup/--no-cleanup", help="Delete script after execution"
+    ),
+    make_executable: bool = typer.Option(
+        True, "--executable/--no-executable", help="Make script executable"
+    ),
+    execution_mode: ExecutionMode = typer.Option(
+        ExecutionMode.PARALLEL, "--execution-mode", "-e", help="Execution mode"
+    ),
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-f", help="Path to JSON config file"
+    ),
+    timeout: int = typer.Option(300, "--timeout", "-t", help="Timeout per operation"),
+    log_file: Optional[Path] = typer.Option(
+        None, "--log-file", "-l", help="Log file path"
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Dry run mode"),
+) -> None:
+    """Execute a shell script on target servers."""
+    script_command(
+        script_path=script_path,
+        script_args=script_args,
+        hosts=hosts,
+        asg=asg,
+        region_name=region_name,
+        username=username,
+        interpreter=interpreter,
+        remote_temp_dir=remote_temp_dir,
+        cleanup_after_execution=cleanup_after_execution,
+        make_executable=make_executable,
         execution_mode=execution_mode,
         config=config,
         timeout=timeout,

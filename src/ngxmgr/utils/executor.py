@@ -7,6 +7,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, NamedTuple, Optional
 from pathlib import Path
+import os
 
 from ngxmgr.aws.asg import ASGClient
 from ngxmgr.config.models import BaseConfig, ExecutionMode
@@ -257,6 +258,98 @@ class RemoteExecutor:
                 error=error_msg
             )
 
+    def execute_script_on_host(
+        self, 
+        hostname: str, 
+        local_script_path: str, 
+        script_args: Optional[str] = None,
+        interpreter: str = "/bin/bash",
+        remote_temp_dir: str = "/tmp",
+        cleanup_after_execution: bool = True,
+        make_executable: bool = True
+    ) -> HostResult:
+        """
+        Execute a script on a single host.
+        
+        Args:
+            hostname: Target hostname
+            local_script_path: Local script file path
+            script_args: Arguments to pass to the script
+            interpreter: Interpreter to use for execution
+            remote_temp_dir: Remote temporary directory
+            cleanup_after_execution: Whether to delete script after execution
+            make_executable: Whether to make script executable
+            
+        Returns:
+            HostResult with execution details
+        """
+        try:
+            if self.config.dry_run:
+                args_info = f" with args: {script_args}" if script_args else ""
+                logger.info(f"[DRY RUN] Would execute script {local_script_path} on {hostname}{args_info}")
+                return HostResult(
+                    hostname=hostname,
+                    success=True,
+                    command_result=CommandResult(0, "DRY RUN script execution", "", True)
+                )
+
+            # Get password (thread-safe, prompts only once)
+            password = self._ensure_password()
+
+            # Generate remote script path
+            script_name = Path(local_script_path).name
+            remote_script_path = f"{remote_temp_dir.rstrip('/')}/{script_name}"
+
+            with SSHClient(hostname, self.config.username, self.config.timeout) as ssh:
+                ssh.connect(password)
+                
+                # Upload script
+                upload_success = ssh.upload_file(local_script_path, remote_script_path)
+                if not upload_success:
+                    return HostResult(
+                        hostname=hostname,
+                        success=False,
+                        error="Failed to upload script to remote host"
+                    )
+                
+                # Make script executable if requested
+                if make_executable:
+                    chmod_result = ssh.execute_command(f"chmod +x {remote_script_path}")
+                    if not chmod_result.success:
+                        logger.warning(f"Failed to make script executable on {hostname}")
+                
+                # Build execution command
+                script_command_parts = [interpreter, remote_script_path]
+                if script_args:
+                    script_command_parts.append(script_args)
+                
+                script_command = " ".join(script_command_parts)
+                
+                # Execute script
+                logger.debug(f"Executing script on {hostname}: {script_command}")
+                result = ssh.execute_command(script_command, timeout=self.config.timeout)
+                
+                # Clean up script if requested
+                if cleanup_after_execution:
+                    cleanup_result = ssh.execute_command(f"rm -f {remote_script_path}")
+                    if not cleanup_result.success:
+                        logger.warning(f"Failed to clean up script on {hostname}")
+                
+                return HostResult(
+                    hostname=hostname,
+                    success=result.success,
+                    command_result=result
+                )
+
+        except Exception as e:
+            error_msg = f"Script execution error: {e}"
+            logger.error(f"Failed to execute script on {hostname}: {error_msg}")
+            return HostResult(
+                hostname=hostname,
+                success=False,
+                error=error_msg
+            )
+
     def execute_command(self, command: str) -> ExecutionSummary:
         """
         Execute a command on all target hosts.
@@ -329,6 +422,48 @@ class RemoteExecutor:
             return self._copy_serial(hosts, local_path, remote_path, recursive)
         else:
             return self._copy_parallel(hosts, local_path, remote_path, recursive)
+
+    def execute_script(
+        self,
+        local_script_path: str,
+        script_args: Optional[str] = None,
+        interpreter: str = "/bin/bash",
+        remote_temp_dir: str = "/tmp",
+        cleanup_after_execution: bool = True,
+        make_executable: bool = True
+    ) -> ExecutionSummary:
+        """
+        Execute a script on all target hosts.
+        
+        Args:
+            local_script_path: Local script file path
+            script_args: Arguments to pass to the script
+            interpreter: Interpreter to use for execution
+            remote_temp_dir: Remote temporary directory
+            cleanup_after_execution: Whether to delete script after execution
+            make_executable: Whether to make script executable
+            
+        Returns:
+            ExecutionSummary with results from all hosts
+        """
+        hosts = self.get_target_hosts()
+        logger.info(f"Executing script on {len(hosts)} hosts in {self.config.execution_mode.value} mode")
+
+        # Ensure password is prompted upfront, before any parallel execution
+        if not self.config.dry_run:
+            self._ensure_password()
+            logger.debug("Password cached for script execution")
+
+        if self.config.execution_mode == ExecutionMode.SERIAL:
+            return self._execute_script_serial(
+                hosts, local_script_path, script_args, interpreter, 
+                remote_temp_dir, cleanup_after_execution, make_executable
+            )
+        else:
+            return self._execute_script_parallel(
+                hosts, local_script_path, script_args, interpreter,
+                remote_temp_dir, cleanup_after_execution, make_executable
+            )
 
     def _execute_serial(self, hosts: List[str], command: str) -> ExecutionSummary:
         """Execute command serially across hosts."""
@@ -445,6 +580,67 @@ class RemoteExecutor:
                         hostname=hostname,
                         success=False,
                         error=f"Copy executor error: {e}"
+                    ))
+
+        return self._create_summary(results)
+
+    def _execute_script_serial(
+        self, 
+        hosts: List[str], 
+        local_script_path: str, 
+        script_args: Optional[str],
+        interpreter: str, 
+        remote_temp_dir: str, 
+        cleanup_after_execution: bool, 
+        make_executable: bool
+    ) -> ExecutionSummary:
+        """Execute script serially on hosts."""
+        results = []
+        
+        for hostname in hosts:
+            logger.info(f"Executing script on {hostname}")
+            result = self.execute_script_on_host(
+                hostname, local_script_path, script_args, interpreter,
+                remote_temp_dir, cleanup_after_execution, make_executable
+            )
+            results.append(result)
+
+        return self._create_summary(results)
+
+    def _execute_script_parallel(
+        self, 
+        hosts: List[str], 
+        local_script_path: str, 
+        script_args: Optional[str],
+        interpreter: str, 
+        remote_temp_dir: str, 
+        cleanup_after_execution: bool, 
+        make_executable: bool
+    ) -> ExecutionSummary:
+        """Execute script in parallel on hosts."""
+        results = []
+        
+        with ThreadPoolExecutor(max_workers=min(len(hosts), 10)) as executor:
+            future_to_host = {
+                executor.submit(
+                    self.execute_script_on_host, hostname, local_script_path, 
+                    script_args, interpreter, remote_temp_dir, 
+                    cleanup_after_execution, make_executable
+                ): hostname
+                for hostname in hosts
+            }
+            
+            for future in as_completed(future_to_host):
+                hostname = future_to_host[future]
+                try:
+                    result = future.result()
+                    results.append(result)
+                except Exception as e:
+                    logger.error(f"Script execution error for {hostname}: {e}")
+                    results.append(HostResult(
+                        hostname=hostname,
+                        success=False,
+                        error=f"Script executor error: {e}"
                     ))
 
         return self._create_summary(results)
