@@ -5,11 +5,12 @@ A command-line interface (CLI) tool for managing NGINX deployments across multip
 ## Features
 
 - **Multi-server operations**: Execute commands across multiple servers in parallel or serial mode
-- **AWS Auto Scaling Group integration**: Automatically discover target servers from ASG
+- **AWS Auto Scaling Group integration**: Automatically discover target servers from ASG with region support
 - **Conda environment management**: Install NGINX in isolated conda environments
 - **Shell compatibility**: Works across different shells (bash, ksh, zsh, etc.)
 - **Secure SSH authentication**: Password-based authentication with secure prompts
 - **Single password prompt**: Password is requested only once per CLI command execution
+- **File and directory copying**: Copy files or directories to remote servers with recursive support
 - **Log management**: Upload logs to S3 with compression and archiving options
 - **Configuration flexibility**: Support for both CLI arguments and JSON configuration files
 - **Comprehensive error handling**: Detailed logging and structured output
@@ -55,6 +56,7 @@ source /opt/conda/bin/activate && conda activate nginx_env && nginx -c config
 | `clear-cache` | Delete the contents of the NGINX cache directory                        |
 | `clear-logs`  | Delete or truncate access and error logs                               |
 | `upload-logs` | Upload logs to AWS S3 with optional deletion or local archiving        |
+| `copy`        | Copy files or directories to remote servers                            |
 
 ## Installation
 
@@ -93,9 +95,10 @@ ngxmgr install \
     --nginx-conf-path ./nginx.conf \
     --custom-conda-channel https://conda.example.com/
 
-# Install NGINX on ASG instances
+# Install NGINX on ASG instances in specific region
 ngxmgr install \
     --asg my-nginx-asg \
+    --region-name us-west-2 \
     --username nginx-admin \
     --base-conda-path /opt/miniconda3 \
     --deployment-path /opt/nginx \
@@ -116,6 +119,36 @@ ngxmgr upload-logs \
     --deployment-path /opt/nginx \
     --s3-bucket s3://my-nginx-logs/ \
     --delete-after-upload
+
+# Copy a file to all servers
+ngxmgr copy config.json /opt/app/config.json \
+    --hosts "server1.example.com,server2.example.com" \
+    --username admin
+
+# Copy a directory recursively to ASG instances
+ngxmgr copy ./assets /var/www/html/assets \
+    --asg my-web-asg \
+    --region-name us-east-1 \
+    --username admin \
+    --recursive
+```
+
+### Copy Command
+
+The `copy` command provides Unix `cp`-like functionality for remote servers:
+
+```bash
+# Basic file copy
+ngxmgr copy local-file.txt /remote/path/file.txt --hosts "server1,server2" --username admin
+
+# Copy directory recursively
+ngxmgr copy ./local-dir /remote/path/dir --hosts "server1,server2" --username admin --recursive
+
+# Copy to ASG instances
+ngxmgr copy app.jar /opt/app/app.jar --asg my-app-asg --region-name us-west-2 --username deploy
+
+# Copy with execution mode
+ngxmgr copy large-file.bin /tmp/large-file.bin --hosts "server1,server2" --username admin --execution-mode serial
 ```
 
 ### Using Configuration Files
@@ -126,6 +159,7 @@ Create a JSON configuration file:
 {
   "hosts": ["server1.example.com", "server2.example.com"],
   "username": "nginx-admin",
+  "region_name": "us-west-2",
   "base_conda_path": "/opt/miniconda3",
   "deployment_path": "/opt/nginx",
   "nginx_dir_name": "nginx_prod",
@@ -144,7 +178,7 @@ Use the configuration file:
 ngxmgr install --config config.json
 
 # Override specific values
-ngxmgr install --config config.json --timeout 900
+ngxmgr install --config config.json --timeout 900 --region-name us-east-1
 ```
 
 ## Password Management
@@ -215,6 +249,7 @@ ngxmgr install --dry-run --hosts "server1" --username admin ...
 | --------------------- | ----- | ----------------------------------------------- | -------- |
 | `--hosts`             | `-h`  | Comma-separated list of hostnames/IPs          | *        |
 | `--asg`               | `-a`  | AWS Auto Scaling Group name                     | *        |
+| `--region-name`       | `-r`  | AWS region name                                 | No       |
 | `--username`          | `-u`  | SSH username for server login                   | Yes      |
 | `--execution-mode`    | `-e`  | Execution mode: parallel or serial             | No       |
 | `--timeout`           | `-t`  | Timeout per operation (seconds)                 | No       |
@@ -244,6 +279,14 @@ ngxmgr install --dry-run --hosts "server1" --username admin ...
 | `--archive-after-upload`  | Path to archive logs after upload     | No       |
 | `--delete-after-upload`   | Delete logs after upload              | No       |
 
+### Copy Command Specific
+
+| Argument         | Short | Description                           | Required |
+| ---------------- | ----- | ------------------------------------- | -------- |
+| `source_path`    |       | Local source file or directory path   | Yes      |
+| `destination_path` |     | Remote destination path               | Yes      |
+| `--recursive`    | `-R`  | Copy directories recursively          | No       |
+
 ## Configuration Priority
 
 When both configuration files and CLI arguments are provided:
@@ -254,10 +297,26 @@ When both configuration files and CLI arguments are provided:
 
 ## AWS Integration
 
-The tool automatically uses the IAM role of the EC2 instance it's running on for AWS authentication. Ensure the instance has the following permissions:
+The tool automatically uses the IAM role of the EC2 instance it's running on for AWS authentication. 
+
+### Required Permissions
+
+Ensure the instance has the following permissions:
 
 - `autoscaling:DescribeAutoScalingGroups`
 - `ec2:DescribeInstances`
+
+### Region Configuration
+
+- Use `--region-name` to specify the AWS region for ASG operations
+- If not specified, uses the default region from AWS configuration
+- Can be set in JSON config files for consistency across commands
+
+```bash
+# Examples with region specification
+ngxmgr install --asg my-asg --region-name us-west-2 --username admin ...
+ngxmgr copy app.jar /opt/app.jar --asg prod-asg --region-name eu-west-1 --username deploy
+```
 
 ## Security
 

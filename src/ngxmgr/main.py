@@ -11,6 +11,7 @@ from ngxmgr.commands.service import start_command, stop_command, restart_command
 from ngxmgr.commands.maintenance import clear_cache_command, clear_logs_command
 from ngxmgr.commands.logs import upload_logs_command
 from ngxmgr.commands.remove import remove_command
+from ngxmgr.commands.copy import copy_command
 
 app = typer.Typer(
     name="ngxmgr",
@@ -26,6 +27,9 @@ def install(
     ),
     asg: Optional[str] = typer.Option(
         None, "--asg", "-a", help="AWS Auto Scaling Group name"
+    ),
+    region_name: Optional[str] = typer.Option(
+        None, "--region-name", "-r", help="AWS region name"
     ),
     username: str = typer.Option(..., "--username", "-u", help="SSH username"),
     base_conda_path: str = typer.Option(
@@ -59,6 +63,7 @@ def install(
     install_command(
         hosts=hosts,
         asg=asg,
+        region_name=region_name,
         username=username,
         base_conda_path=base_conda_path,
         deployment_path=deployment_path,
@@ -80,6 +85,9 @@ def remove(
     ),
     asg: Optional[str] = typer.Option(
         None, "--asg", "-a", help="AWS Auto Scaling Group name"
+    ),
+    region_name: Optional[str] = typer.Option(
+        None, "--region-name", "-r", help="AWS region name"
     ),
     username: str = typer.Option(..., "--username", "-u", help="SSH username"),
     base_conda_path: str = typer.Option(
@@ -107,6 +115,7 @@ def remove(
     remove_command(
         hosts=hosts,
         asg=asg,
+        region_name=region_name,
         username=username,
         base_conda_path=base_conda_path,
         deployment_path=deployment_path,
@@ -126,6 +135,9 @@ def start(
     ),
     asg: Optional[str] = typer.Option(
         None, "--asg", "-a", help="AWS Auto Scaling Group name"
+    ),
+    region_name: Optional[str] = typer.Option(
+        None, "--region-name", "-r", help="AWS region name"
     ),
     username: str = typer.Option(..., "--username", "-u", help="SSH username"),
     base_conda_path: str = typer.Option(
@@ -153,6 +165,7 @@ def start(
     start_command(
         hosts=hosts,
         asg=asg,
+        region_name=region_name,
         username=username,
         base_conda_path=base_conda_path,
         deployment_path=deployment_path,
@@ -172,6 +185,9 @@ def stop(
     ),
     asg: Optional[str] = typer.Option(
         None, "--asg", "-a", help="AWS Auto Scaling Group name"
+    ),
+    region_name: Optional[str] = typer.Option(
+        None, "--region-name", "-r", help="AWS region name"
     ),
     username: str = typer.Option(..., "--username", "-u", help="SSH username"),
     base_conda_path: str = typer.Option(
@@ -199,6 +215,7 @@ def stop(
     stop_command(
         hosts=hosts,
         asg=asg,
+        region_name=region_name,
         username=username,
         base_conda_path=base_conda_path,
         deployment_path=deployment_path,
@@ -218,6 +235,9 @@ def restart(
     ),
     asg: Optional[str] = typer.Option(
         None, "--asg", "-a", help="AWS Auto Scaling Group name"
+    ),
+    region_name: Optional[str] = typer.Option(
+        None, "--region-name", "-r", help="AWS region name"
     ),
     username: str = typer.Option(..., "--username", "-u", help="SSH username"),
     base_conda_path: str = typer.Option(
@@ -245,6 +265,7 @@ def restart(
     restart_command(
         hosts=hosts,
         asg=asg,
+        region_name=region_name,
         username=username,
         base_conda_path=base_conda_path,
         deployment_path=deployment_path,
@@ -264,6 +285,9 @@ def clear_cache(
     ),
     asg: Optional[str] = typer.Option(
         None, "--asg", "-a", help="AWS Auto Scaling Group name"
+    ),
+    region_name: Optional[str] = typer.Option(
+        None, "--region-name", "-r", help="AWS region name"
     ),
     username: str = typer.Option(..., "--username", "-u", help="SSH username"),
     deployment_path: str = typer.Option(
@@ -288,6 +312,7 @@ def clear_cache(
     clear_cache_command(
         hosts=hosts,
         asg=asg,
+        region_name=region_name,
         username=username,
         deployment_path=deployment_path,
         nginx_dir_name=nginx_dir_name,
@@ -306,6 +331,9 @@ def clear_logs(
     ),
     asg: Optional[str] = typer.Option(
         None, "--asg", "-a", help="AWS Auto Scaling Group name"
+    ),
+    region_name: Optional[str] = typer.Option(
+        None, "--region-name", "-r", help="AWS region name"
     ),
     username: str = typer.Option(..., "--username", "-u", help="SSH username"),
     deployment_path: str = typer.Option(
@@ -330,6 +358,7 @@ def clear_logs(
     clear_logs_command(
         hosts=hosts,
         asg=asg,
+        region_name=region_name,
         username=username,
         deployment_path=deployment_path,
         nginx_dir_name=nginx_dir_name,
@@ -348,6 +377,9 @@ def upload_logs(
     ),
     asg: Optional[str] = typer.Option(
         None, "--asg", "-a", help="AWS Auto Scaling Group name"
+    ),
+    region_name: Optional[str] = typer.Option(
+        None, "--region-name", "-r", help="AWS region name"
     ),
     username: str = typer.Option(..., "--username", "-u", help="SSH username"),
     deployment_path: str = typer.Option(
@@ -381,12 +413,59 @@ def upload_logs(
     upload_logs_command(
         hosts=hosts,
         asg=asg,
+        region_name=region_name,
         username=username,
         deployment_path=deployment_path,
         nginx_dir_name=nginx_dir_name,
         s3_bucket=s3_bucket,
         archive_after_upload=archive_after_upload,
         delete_after_upload=delete_after_upload,
+        execution_mode=execution_mode,
+        config=config,
+        timeout=timeout,
+        log_file=log_file,
+        dry_run=dry_run,
+    )
+
+
+@app.command()
+def copy(
+    source_path: str = typer.Argument(..., help="Local source file or directory path"),
+    destination_path: str = typer.Argument(..., help="Remote destination path"),
+    hosts: Optional[str] = typer.Option(
+        None, "--hosts", "-h", help="Comma-separated list of hostnames/IPs"
+    ),
+    asg: Optional[str] = typer.Option(
+        None, "--asg", "-a", help="AWS Auto Scaling Group name"
+    ),
+    region_name: Optional[str] = typer.Option(
+        None, "--region-name", "-r", help="AWS region name"
+    ),
+    username: str = typer.Option(..., "--username", "-u", help="SSH username"),
+    recursive: bool = typer.Option(
+        False, "--recursive", "-R", help="Copy directories recursively"
+    ),
+    execution_mode: ExecutionMode = typer.Option(
+        ExecutionMode.PARALLEL, "--execution-mode", "-e", help="Execution mode"
+    ),
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-f", help="Path to JSON config file"
+    ),
+    timeout: int = typer.Option(300, "--timeout", "-t", help="Timeout per operation"),
+    log_file: Optional[Path] = typer.Option(
+        None, "--log-file", "-l", help="Log file path"
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Dry run mode"),
+) -> None:
+    """Copy files or directories to target servers."""
+    copy_command(
+        source_path=source_path,
+        destination_path=destination_path,
+        hosts=hosts,
+        asg=asg,
+        region_name=region_name,
+        username=username,
+        recursive=recursive,
         execution_mode=execution_mode,
         config=config,
         timeout=timeout,

@@ -18,6 +18,7 @@ class BaseConfig(BaseModel):
     """Base configuration with common fields."""
     hosts: Optional[List[str]] = None
     asg: Optional[str] = None
+    region_name: Optional[str] = None
     username: str
     execution_mode: ExecutionMode = ExecutionMode.PARALLEL
     timeout: int = Field(default=300, ge=0)
@@ -95,4 +96,19 @@ class LogUploadConfig(BaseConfig):
         """Validate S3 bucket URI format."""
         if not v.startswith("s3://"):
             raise ValueError("S3 bucket must start with 's3://'")
+        return v
+
+
+class CopyConfig(BaseConfig):
+    """Configuration for copy operations."""
+    source_path: str
+    destination_path: str
+    recursive: bool = False
+
+    @validator("source_path")
+    def validate_source_exists(cls, v):
+        """Validate that source path exists."""
+        source = Path(v)
+        if not source.exists():
+            raise ValueError(f"Source path not found: {v}")
         return v 

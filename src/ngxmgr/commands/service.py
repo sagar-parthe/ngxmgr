@@ -20,6 +20,7 @@ from ngxmgr.utils.logging import (
 def start_command(
     hosts: Optional[str] = None,
     asg: Optional[str] = None,
+    region_name: Optional[str] = None,
     username: str = "",
     base_conda_path: str = "",
     deployment_path: str = "",
@@ -38,6 +39,7 @@ def start_command(
             config_file=config,
             hosts=hosts,
             asg=asg,
+            region_name=region_name,
             username=username,
             base_conda_path=base_conda_path,
             deployment_path=deployment_path,
@@ -62,6 +64,7 @@ def start_command(
 def stop_command(
     hosts: Optional[str] = None,
     asg: Optional[str] = None,
+    region_name: Optional[str] = None,
     username: str = "",
     base_conda_path: str = "",
     deployment_path: str = "",
@@ -80,6 +83,7 @@ def stop_command(
             config_file=config,
             hosts=hosts,
             asg=asg,
+            region_name=region_name,
             username=username,
             base_conda_path=base_conda_path,
             deployment_path=deployment_path,
@@ -104,6 +108,7 @@ def stop_command(
 def restart_command(
     hosts: Optional[str] = None,
     asg: Optional[str] = None,
+    region_name: Optional[str] = None,
     username: str = "",
     base_conda_path: str = "",
     deployment_path: str = "",
@@ -122,6 +127,7 @@ def restart_command(
             config_file=config,
             hosts=hosts,
             asg=asg,
+            region_name=region_name,
             username=username,
             base_conda_path=base_conda_path,
             deployment_path=deployment_path,

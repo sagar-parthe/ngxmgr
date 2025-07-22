@@ -20,6 +20,7 @@ from ngxmgr.utils.logging import (
 def clear_cache_command(
     hosts: Optional[str] = None,
     asg: Optional[str] = None,
+    region_name: Optional[str] = None,
     username: str = "",
     deployment_path: str = "",
     nginx_dir_name: str = "nginx_run",
@@ -37,6 +38,7 @@ def clear_cache_command(
             config_file=config,
             hosts=hosts,
             asg=asg,
+            region_name=region_name,
             username=username,
             deployment_path=deployment_path,
             nginx_dir_name=nginx_dir_name,
@@ -60,6 +62,7 @@ def clear_cache_command(
 def clear_logs_command(
     hosts: Optional[str] = None,
     asg: Optional[str] = None,
+    region_name: Optional[str] = None,
     username: str = "",
     deployment_path: str = "",
     nginx_dir_name: str = "nginx_run",
@@ -77,6 +80,7 @@ def clear_logs_command(
             config_file=config,
             hosts=hosts,
             asg=asg,
+            region_name=region_name,
             username=username,
             deployment_path=deployment_path,
             nginx_dir_name=nginx_dir_name,

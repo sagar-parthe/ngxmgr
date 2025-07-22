@@ -2,7 +2,7 @@
 AWS Auto Scaling Group integration for host discovery.
 """
 import logging
-from typing import List, NamedTuple
+from typing import List, NamedTuple, Optional
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -22,13 +22,14 @@ class InstanceInfo(NamedTuple):
 class ASGClient:
     """AWS Auto Scaling Group client for host discovery."""
 
-    def __init__(self, region_name: str = None):
+    def __init__(self, region_name: Optional[str] = None):
         """
         Initialize ASG client.
         
         Args:
             region_name: AWS region (uses default if not specified)
         """
+        self.region_name = region_name
         try:
             self.session = boto3.Session()
             self.asg_client = self.session.client('autoscaling', region_name=region_name)
@@ -36,7 +37,8 @@ class ASGClient:
             
             # Test connection
             self.asg_client.describe_auto_scaling_groups(MaxRecords=1)
-            logger.info("Successfully connected to AWS using IAM role")
+            region_msg = f" in region {region_name}" if region_name else ""
+            logger.info(f"Successfully connected to AWS using IAM role{region_msg}")
             
         except Exception as e:
             logger.error(f"Failed to initialize AWS clients: {e}")

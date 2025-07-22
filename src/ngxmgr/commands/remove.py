@@ -20,6 +20,7 @@ from ngxmgr.utils.logging import (
 def remove_command(
     hosts: Optional[str] = None,
     asg: Optional[str] = None,
+    region_name: Optional[str] = None,
     username: str = "",
     base_conda_path: str = "",
     deployment_path: str = "",
@@ -38,6 +39,7 @@ def remove_command(
             config_file=config,
             hosts=hosts,
             asg=asg,
+            region_name=region_name,
             username=username,
             base_conda_path=base_conda_path,
             deployment_path=deployment_path,

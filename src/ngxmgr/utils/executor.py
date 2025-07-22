@@ -6,6 +6,7 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, NamedTuple, Optional
+from pathlib import Path
 
 from ngxmgr.aws.asg import ASGClient
 from ngxmgr.config.models import BaseConfig, ExecutionMode
@@ -57,7 +58,7 @@ class RemoteExecutor:
         if self.config.hosts:
             return self.config.hosts
         elif self.config.asg:
-            asg_client = ASGClient()
+            asg_client = ASGClient(region_name=self.config.region_name)
             return asg_client.get_running_hostnames(self.config.asg)
         else:
             raise ValueError("No hosts or ASG specified in configuration")
@@ -170,6 +171,92 @@ class RemoteExecutor:
                 error=error_msg
             )
 
+    def copy_to_host(self, hostname: str, local_path: str, remote_path: str, recursive: bool = False) -> HostResult:
+        """
+        Copy a file or directory to a single host.
+        
+        Args:
+            hostname: Target hostname
+            local_path: Local file or directory path
+            remote_path: Remote destination path
+            recursive: Whether to copy directories recursively
+            
+        Returns:
+            HostResult with copy details
+        """
+        try:
+            if self.config.dry_run:
+                copy_type = "directory" if recursive else "file"
+                logger.info(f"[DRY RUN] Would copy {copy_type} {local_path} to {hostname}:{remote_path}")
+                return HostResult(
+                    hostname=hostname,
+                    success=True,
+                    command_result=CommandResult(0, "DRY RUN copy", "", True)
+                )
+
+            # Get password (thread-safe, prompts only once)
+            password = self._ensure_password()
+
+            with SSHClient(hostname, self.config.username, self.config.timeout) as ssh:
+                ssh.connect(password)
+                
+                # Use scp-like functionality
+                if recursive:
+                    # For directories, use tar and ssh for efficient transfer
+                    import tempfile
+                    import subprocess
+                    
+                    # Create tar archive locally
+                    with tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False) as tmp_file:
+                        tar_path = tmp_file.name
+                    
+                    try:
+                        # Create tar archive
+                        subprocess.run([
+                            'tar', '-czf', tar_path, '-C', str(Path(local_path).parent), 
+                            str(Path(local_path).name)
+                        ], check=True)
+                        
+                        # Upload tar file
+                        remote_tar = f"/tmp/{Path(tar_path).name}"
+                        upload_success = ssh.upload_file(tar_path, remote_tar)
+                        
+                        if upload_success:
+                            # Extract tar file on remote
+                            extract_cmd = f"mkdir -p {remote_path} && tar -xzf {remote_tar} -C {remote_path} && rm {remote_tar}"
+                            result = ssh.execute_command(extract_cmd)
+                            success = result.success
+                        else:
+                            success = False
+                            
+                    finally:
+                        # Clean up local tar file
+                        Path(tar_path).unlink(missing_ok=True)
+                        
+                else:
+                    # For files, use direct upload
+                    success = ssh.upload_file(local_path, remote_path)
+                
+                return HostResult(
+                    hostname=hostname,
+                    success=success,
+                    command_result=CommandResult(
+                        0 if success else 1,
+                        "Copy successful" if success else "Copy failed",
+                        "" if success else "Copy error",
+                        success
+                    )
+                )
+
+        except Exception as e:
+            error_msg = f"Copy error: {e}"
+            logger.error(f"Failed to copy to {hostname}: {error_msg}")
+            return HostResult(
+                hostname=hostname,
+                success=False,
+                error=error_msg
+            )
+
     def execute_command(self, command: str) -> ExecutionSummary:
         """
         Execute a command on all target hosts.
@@ -216,6 +303,32 @@ class RemoteExecutor:
             return self._upload_serial(hosts, local_path, remote_path)
         else:
             return self._upload_parallel(hosts, local_path, remote_path)
+
+    def copy_files(self, local_path: str, remote_path: str, recursive: bool = False) -> ExecutionSummary:
+        """
+        Copy files or directories to all target hosts.
+        
+        Args:
+            local_path: Local file or directory path
+            remote_path: Remote destination path
+            recursive: Whether to copy directories recursively
+            
+        Returns:
+            ExecutionSummary with results from all hosts
+        """
+        hosts = self.get_target_hosts()
+        copy_type = "directory" if recursive else "file"
+        logger.info(f"Copying {copy_type} to {len(hosts)} hosts in {self.config.execution_mode.value} mode")
+
+        # Ensure password is prompted upfront, before any parallel execution
+        if not self.config.dry_run:
+            self._ensure_password()
+            logger.debug("Password cached for file copies")
+
+        if self.config.execution_mode == ExecutionMode.SERIAL:
+            return self._copy_serial(hosts, local_path, remote_path, recursive)
+        else:
+            return self._copy_parallel(hosts, local_path, remote_path, recursive)
 
     def _execute_serial(self, hosts: List[str], command: str) -> ExecutionSummary:
         """Execute command serially across hosts."""
@@ -296,6 +409,42 @@ class RemoteExecutor:
                         hostname=hostname,
                         success=False,
                         error=f"Upload executor error: {e}"
+                    ))
+
+        return self._create_summary(results)
+
+    def _copy_serial(self, hosts: List[str], local_path: str, remote_path: str, recursive: bool) -> ExecutionSummary:
+        """Copy files serially to hosts."""
+        results = []
+        
+        for hostname in hosts:
+            logger.info(f"Copying to {hostname}")
+            result = self.copy_to_host(hostname, local_path, remote_path, recursive)
+            results.append(result)
+
+        return self._create_summary(results)
+
+    def _copy_parallel(self, hosts: List[str], local_path: str, remote_path: str, recursive: bool) -> ExecutionSummary:
+        """Copy files in parallel to hosts."""
+        results = []
+        
+        with ThreadPoolExecutor(max_workers=min(len(hosts), 10)) as executor:
+            future_to_host = {
+                executor.submit(self.copy_to_host, hostname, local_path, remote_path, recursive): hostname
+                for hostname in hosts
+            }
+            
+            for future in as_completed(future_to_host):
+                hostname = future_to_host[future]
+                try:
+                    result = future.result()
+                    results.append(result)
+                except Exception as e:
+                    logger.error(f"Copy error for {hostname}: {e}")
+                    results.append(HostResult(
+                        hostname=hostname,
+                        success=False,
+                        error=f"Copy executor error: {e}"
                     ))
 
         return self._create_summary(results)

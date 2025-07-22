@@ -1,6 +1,7 @@
 {
   "hosts": ["server1.example.com", "server2.example.com"],
   "username": "nginx-admin",
+  "region_name": "us-west-2",
   "base_conda_path": "/opt/miniconda3",
   "deployment_path": "/opt/nginx",
   "nginx_dir_name": "nginx_prod",
@@ -10,5 +11,6 @@
   "archive_after_upload": "/var/archive/nginx-logs",
   "delete_after_upload": false,
   "execution_mode": "parallel",
-  "timeout": 600
+  "timeout": 600,
+  "recursive": false
 } 
